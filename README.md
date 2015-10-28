@@ -1,3 +1,3 @@
 # map_difference
-地図とscanの差分をとる
-作成中
+mapとscanの差分をとる
+pointcloudでdynamic_obstacleとして配信される
