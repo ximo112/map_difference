@@ -14,7 +14,6 @@ public:
     scan_sub = nh.subscribe("scan", 10, &Map_Difference::scanCallBack, this);
     static_obstacle_pub = nh.advertise<sensor_msgs::PointCloud>("static_obstacle", 100);
     dynamic_obstacle_pub = nh.advertise<sensor_msgs::PointCloud>("dynamic_obstacle", 100);
-    ros::Rate loop_rate(10);
   }
 
 private:
@@ -139,8 +138,8 @@ private:
 int main(int argc, char **argv){
   ros::init(argc, argv, "map_difference");
   ROS_INFO("hallo");
-  Map_Difference static_obstacle;
-  static_obstacle;
+  Map_Difference obstacle_cloud;
+  obstacle_cloud;
 
   ros::spin();
 
