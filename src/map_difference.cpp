@@ -5,7 +5,7 @@
 #include <sensor_msgs/LaserScan.h>
 #include <laser_geometry/laser_geometry.h>
 #include <tf/transform_listener.h>
-#define allowable_error 0.5
+#define allowable_error 0.7
 
 class Map_Difference{
 public:
@@ -14,20 +14,7 @@ public:
     scan_sub = nh.subscribe("scan", 10, &Map_Difference::scanCallBack, this);
     static_obstacle_pub = nh.advertise<sensor_msgs::PointCloud>("static_obstacle", 100);
     dynamic_obstacle_pub = nh.advertise<sensor_msgs::PointCloud>("dynamic_obstacle", 100);
-    ros::Rate loop_rate(10);
   }
-
-private:
-  ros::NodeHandle nh;
-  ros::Subscriber map_sub;
-  ros::Subscriber scan_sub;
-  ros::Publisher static_obstacle_pub;
-  ros::Publisher dynamic_obstacle_pub;
-  sensor_msgs::PointCloud static_obstacle_;
-  laser_geometry::LaserProjection projector;
-  tf::TransformListener listener;
-  sensor_msgs::PointCloud scan_cloud;
-  sensor_msgs::PointCloud dynamic_obstacle_; 
 
   void mapCallBack(const nav_msgs::OccupancyGrid::ConstPtr& map){
     float x = map->info.origin.position.x + map->info.resolution / 2;
@@ -61,6 +48,7 @@ private:
     //差分の処理を入れる
     float distance;
     int i, j, count, k = 0, dynamic_obstacle_num = 0;
+    dynamic_obstacle_.points.clear();
 
     projector.projectLaser(*scan, scan_cloud);
 
@@ -101,7 +89,7 @@ private:
       }
     }
 
-    if(dynamic_obstacle_num >= (int)scan_cloud.points.size() * 0.8){
+    if(dynamic_obstacle_num >= (int)scan_cloud.points.size() * 0.9){
       ROS_WARN("Self-location is not accurate, or landmarks is less");
     }else{
       dynamic_obstacle_.points.resize(dynamic_obstacle_num);
@@ -130,17 +118,26 @@ private:
     dynamic_obstacle_.header.frame_id = static_obstacle_.header.frame_id;
 
     dynamic_obstacle_pub.publish(dynamic_obstacle_);
-
-    dynamic_obstacle_.points.clear();
   }
+private:
+  ros::NodeHandle nh;
+  ros::Subscriber map_sub;
+  ros::Subscriber scan_sub;
+  ros::Publisher static_obstacle_pub;
+  ros::Publisher dynamic_obstacle_pub;
+  sensor_msgs::PointCloud static_obstacle_;
+  laser_geometry::LaserProjection projector;
+  tf::TransformListener listener;
+  sensor_msgs::PointCloud scan_cloud;
+  sensor_msgs::PointCloud dynamic_obstacle_; 
 
 };
 
 int main(int argc, char **argv){
   ros::init(argc, argv, "map_difference");
   ROS_INFO("hallo");
-  Map_Difference static_obstacle;
-  static_obstacle;
+  Map_Difference obstacle_cloud;
+  obstacle_cloud;
 
   ros::spin();
 
