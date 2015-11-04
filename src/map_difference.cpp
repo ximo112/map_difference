@@ -78,9 +78,12 @@ public:
 
     for(i = 0; i < (int)scan_cloud.points.size(); i++){
       count = 0;
+      float x_min = scan_cloud.points[i].x - allowable_error;
+      float x_max = scan_cloud.points[i].x + allowable_error;
+      float y_min = scan_cloud.points[i].y - allowable_error;
+      float y_max = scan_cloud.points[i].y + allowable_error;
       for(j = 0; j < (int)static_obstacle_.points.size(); j++){
-        distance = hypotf(static_obstacle_.points[j].x - scan_cloud.points[i].x, static_obstacle_.points[j].y - scan_cloud.points[i].y);
-        if(distance > allowable_error){
+        if(x_min < static_obstacle_.points[j].x < x_max && y_min < static_obstacle_.points[j].y < y_max){
           count += 1;
         }
       }
