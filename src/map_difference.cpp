@@ -5,7 +5,8 @@
 #include <sensor_msgs/LaserScan.h>
 #include <laser_geometry/laser_geometry.h>
 #include <tf/transform_listener.h>
-#define allowable_error 0.7
+#define allowable_error 0.5
+#define static_error 0.01
 
 class Map_Difference{
 public:
@@ -14,12 +15,14 @@ public:
     scan_sub = nh.subscribe("scan", 10, &Map_Difference::scanCallBack, this);
     static_obstacle_pub = nh.advertise<sensor_msgs::PointCloud>("static_obstacle", 100);
     dynamic_obstacle_pub = nh.advertise<sensor_msgs::PointCloud>("dynamic_obstacle", 100);
+    check = false;
   }
 
   void mapCallBack(const nav_msgs::OccupancyGrid::ConstPtr& map){
     float x = map->info.origin.position.x + map->info.resolution / 2;
     float y = map->info.origin.position.y + map->info.resolution / 2;
     int i , j = 0, static_obstacle_num = 0;
+    check = true;
     for(i = 0; i < map->info.width * map->info.height; i++){
       if(map->data[i] == 100){
         static_obstacle_num += 1;
@@ -45,74 +48,87 @@ public:
   }
 
   void scanCallBack(const sensor_msgs::LaserScan::ConstPtr& scan){
-    //差分の処理を入れる
-    float distance;
-    int i, j, count, k = 0, dynamic_obstacle_num = 0;
-    dynamic_obstacle_.points.clear();
+    if(check == false){
+      ROS_WARN("map is not call");
+    }else{
+      //差分の処理を入れる
+      float distance;
+      int i, j, count, k, dynamic_obstacle_num;
 
-    projector.projectLaser(*scan, scan_cloud);
+      dynamic_obstacle_num = 0;
+      dynamic_obstacle_.points.clear();
 
-    float scan_cloud_x[(int)scan_cloud.points.size()], scan_cloud_y[(int)scan_cloud.points.size()], scan_cloud_intensity[(int)scan_cloud.channels[0].values.size()];
-    count = 0;
-    for(i = 0; i < (int)scan_cloud.points.size(); i++){
-      if((float)hypotf(scan_cloud.points[i].x, scan_cloud.points[i].y) < 29){
-        scan_cloud_x[count] = scan_cloud.points[i].x;
-        scan_cloud_y[count] = scan_cloud.points[i].y;
-        scan_cloud_intensity[count] = scan_cloud.channels[0].values[i];
-        count += 1;
-      }
-    }
-    scan_cloud.points.resize(count);
-    scan_cloud.channels[0].values.resize(count);
-    for(i = 0; i < count; i++){
-      scan_cloud.points[i].x = scan_cloud_x[i];
-      scan_cloud.points[i].y = scan_cloud_y[i];
-      scan_cloud.channels[0].values[i] = scan_cloud_intensity[i];
-    }
-    //error処理
-    if(!listener.waitForTransform(scan->header.frame_id, static_obstacle_.header.frame_id, scan->header.stamp + ros::Duration().fromSec(scan->ranges.size() * scan->time_increment), ros::Duration(1.0))){
-      return;
-    }
+      projector.projectLaser(*scan, scan_cloud);
 
-    listener.transformPointCloud(static_obstacle_.header.frame_id, scan_cloud, scan_cloud);
-
-    for(i = 0; i < (int)scan_cloud.points.size(); i++){
+      float scan_cloud_x[(int)scan_cloud.points.size()], scan_cloud_y[(int)scan_cloud.points.size()], scan_cloud_intensity[(int)scan_cloud.channels[0].values.size()];
       count = 0;
-      float x_min = scan_cloud.points[i].x - allowable_error;
-      float x_max = scan_cloud.points[i].x + allowable_error;
-      float y_min = scan_cloud.points[i].y - allowable_error;
-      float y_max = scan_cloud.points[i].y + allowable_error;
-      for(j = 0; j < (int)static_obstacle_.points.size(); j++){
-        if(x_min < static_obstacle_.points[j].x < x_max && y_min < static_obstacle_.points[j].y < y_max){
+      for(i = 0; i < (int)scan_cloud.points.size(); i++){
+        if((float)hypotf(scan_cloud.points[i].x, scan_cloud.points[i].y) < 29){
+          scan_cloud_x[count] = scan_cloud.points[i].x;
+          scan_cloud_y[count] = scan_cloud.points[i].y;
+          scan_cloud_intensity[count] = scan_cloud.channels[0].values[i];
           count += 1;
         }
       }
-      if(count == (int)static_obstacle_.points.size()){
-        dynamic_obstacle_num += 1;
+      scan_cloud.points.resize(count);
+      scan_cloud.channels[0].values.resize(count);
+      for(i = 0; i < count; i++){
+        scan_cloud.points[i].x = scan_cloud_x[i];
+        scan_cloud.points[i].y = scan_cloud_y[i];
+        scan_cloud.channels[0].values[i] = scan_cloud_intensity[i];
       }
-    }
+      //error処理
+      if(!listener.waitForTransform(scan->header.frame_id, static_obstacle_.header.frame_id, scan->header.stamp + ros::Duration().fromSec(scan->ranges.size() * scan->time_increment), ros::Duration(1.0))){
+        return;
+      }
 
-    if(dynamic_obstacle_num >= (int)scan_cloud.points.size() * 0.9){
-      ROS_WARN("Self-location is not accurate, or landmarks is less");
-    }else{
-      dynamic_obstacle_.points.resize(dynamic_obstacle_num);
-      dynamic_obstacle_.channels.resize(1);
-      dynamic_obstacle_.channels[0].name = "intensity";
-      dynamic_obstacle_.channels[0].values.resize(dynamic_obstacle_num);
+      listener.transformPointCloud(static_obstacle_.header.frame_id, scan_cloud, scan_cloud);
 
       for(i = 0; i < (int)scan_cloud.points.size(); i++){
-        count = 0;
+        int dynamic_obstacle_check = true;
+        float x_min = scan_cloud.points[i].x - allowable_error;
+        float x_max = scan_cloud.points[i].x + allowable_error;
+        float y_min = scan_cloud.points[i].y - allowable_error;
+        float y_max = scan_cloud.points[i].y + allowable_error;
         for(j = 0; j < (int)static_obstacle_.points.size(); j++){
-          distance = hypotf(static_obstacle_.points[j].x - scan_cloud.points[i].x, static_obstacle_.points[j].y - scan_cloud.points[i].y);
-          if(distance > allowable_error){
-            count += 1;
+          if(x_min < static_obstacle_.points[j].x && static_obstacle_.points[j].x < x_max && y_min < static_obstacle_.points[j].y && static_obstacle_.points[j].y < y_max){
+            dynamic_obstacle_check = false;
           }
         }
-        if(count == (int)static_obstacle_.points.size()){
-          dynamic_obstacle_.points[k].x = scan_cloud.points[i].x;
-          dynamic_obstacle_.points[k].y = scan_cloud.points[i].y;
-          dynamic_obstacle_.channels[0].values[k] = scan_cloud.channels[0].values[i];
-          k += 1;
+        if(dynamic_obstacle_check == true){
+          dynamic_obstacle_num += 1;
+        }
+      }
+
+      if(dynamic_obstacle_num >= (int)scan_cloud.points.size() * 0.9){
+        ROS_WARN("Self-location is not accurate, or landmarks is less");
+        dynamic_obstacle_.points.clear();
+        dynamic_obstacle_.channels.clear();
+      }else{
+        ROS_INFO("ok");
+        dynamic_obstacle_.points.resize(dynamic_obstacle_num);
+        dynamic_obstacle_.channels.resize(1);
+        dynamic_obstacle_.channels[0].name = "intensity";
+        dynamic_obstacle_.channels[0].values.resize(dynamic_obstacle_num);
+        k = 0;
+
+        for(i = 0; i < (int)scan_cloud.points.size(); i++){
+          int dynamic_obstacle_check = true;
+          float x_min = scan_cloud.points[i].x - allowable_error;
+          float x_max = scan_cloud.points[i].x + allowable_error;
+          float y_min = scan_cloud.points[i].y - allowable_error;
+          float y_max = scan_cloud.points[i].y + allowable_error;
+          for(j = 0; j < (int)static_obstacle_.points.size(); j++){
+            if(x_min < static_obstacle_.points[j].x && static_obstacle_.points[j].x < x_max && y_min < static_obstacle_.points[j].y && static_obstacle_.points[j].y < y_max){
+              dynamic_obstacle_check = false;
+            }
+          }
+          if(dynamic_obstacle_check == true){
+            dynamic_obstacle_.points[k].x = scan_cloud.points[i].x;
+            dynamic_obstacle_.points[k].y = scan_cloud.points[i].y;
+            dynamic_obstacle_.channels[0].values[k] = scan_cloud.channels[0].values[i];
+            k += 1;
+          }
         }
       }
     }
@@ -122,6 +138,7 @@ public:
 
     dynamic_obstacle_pub.publish(dynamic_obstacle_);
   }
+  
 private:
   ros::NodeHandle nh;
   ros::Subscriber map_sub;
@@ -132,8 +149,8 @@ private:
   laser_geometry::LaserProjection projector;
   tf::TransformListener listener;
   sensor_msgs::PointCloud scan_cloud;
-  sensor_msgs::PointCloud dynamic_obstacle_; 
-
+  sensor_msgs::PointCloud dynamic_obstacle_;
+  int check;
 };
 
 int main(int argc, char **argv){
