@@ -5,6 +5,13 @@
 #include <sensor_msgs/LaserScan.h>
 #include <laser_geometry/laser_geometry.h>
 #include <tf/transform_listener.h>
+#include <iostream>
+#include <pcl/io/pcd_io.h>
+#include <pcl/point_types.h>
+#include <pcl/filters/statistical_outlier_removal.h>
+#include <pcl_conversions/pcl_conversions.h>
+#include <sensor_msgs/PointCloud2.h>
+#include <sensor_msgs/point_cloud_conversion.h>
 #define allowable_error 0.5
 #define static_error 0.01
 
@@ -48,13 +55,13 @@ public:
   }
 
   void scanCallBack(const sensor_msgs::LaserScan::ConstPtr& scan){
-    if(check == false){
+    float distance;
+    int i, j, count, k, dynamic_obstacle_num;
+
+   if(check == false){
       ROS_WARN("map is not call");
     }else{
       //差分の処理を入れる
-      float distance;
-      int i, j, count, k, dynamic_obstacle_num;
-
       dynamic_obstacle_num = 0;
       dynamic_obstacle_.points.clear();
 
@@ -112,18 +119,19 @@ public:
         dynamic_obstacle_.channels[0].values.resize(dynamic_obstacle_num);
         k = 0;
 
+        int dynamic_obstacle_check[(int)scan_cloud.points.size()];
         for(i = 0; i < (int)scan_cloud.points.size(); i++){
-          int dynamic_obstacle_check = true;
+          dynamic_obstacle_check[i] = true;
           float x_min = scan_cloud.points[i].x - allowable_error;
           float x_max = scan_cloud.points[i].x + allowable_error;
           float y_min = scan_cloud.points[i].y - allowable_error;
           float y_max = scan_cloud.points[i].y + allowable_error;
           for(j = 0; j < (int)static_obstacle_.points.size(); j++){
             if(x_min < static_obstacle_.points[j].x && static_obstacle_.points[j].x < x_max && y_min < static_obstacle_.points[j].y && static_obstacle_.points[j].y < y_max){
-              dynamic_obstacle_check = false;
+              dynamic_obstacle_check[i] = false;
             }
           }
-          if(dynamic_obstacle_check == true){
+          if(dynamic_obstacle_check[i] == true){
             dynamic_obstacle_.points[k].x = scan_cloud.points[i].x;
             dynamic_obstacle_.points[k].y = scan_cloud.points[i].y;
             dynamic_obstacle_.channels[0].values[k] = scan_cloud.channels[0].values[i];
@@ -136,7 +144,27 @@ public:
     dynamic_obstacle_.header.stamp = scan->header.stamp;
     dynamic_obstacle_.header.frame_id = static_obstacle_.header.frame_id;
 
-    dynamic_obstacle_pub.publish(dynamic_obstacle_);
+    sensor_msgs::PointCloud2 dynamic_obstacle2_;
+    sensor_msgs::convertPointCloudToPointCloud2(dynamic_obstacle_, dynamic_obstacle2_);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_dynamic_obstacle(new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::fromROSMsg(dynamic_obstacle2_, *pcl_dynamic_obstacle);
+
+    ROS_INFO("%d", (int)dynamic_obstacle_.points.size());///
+    pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;
+    sor.setInputCloud (pcl_dynamic_obstacle);
+    sor.setMeanK ((int)dynamic_obstacle_.points.size());
+    sor.setStddevMulThresh (3.0);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_dynamic_obstacle_filter(new pcl::PointCloud<pcl::PointXYZ>);
+    sor.filter(*pcl_dynamic_obstacle_filter);
+
+    sensor_msgs::PointCloud2 dynamic_obstacle2_filter_;
+    pcl::toROSMsg(*pcl_dynamic_obstacle_filter, dynamic_obstacle2_filter_);
+    sensor_msgs::PointCloud dynamic_obstacle_filter_;
+    sensor_msgs::convertPointCloud2ToPointCloud(dynamic_obstacle2_filter_, dynamic_obstacle_filter_);
+    dynamic_obstacle_filter_.header.stamp = ros::Time::now();
+    dynamic_obstacle_filter_.header.frame_id = static_obstacle_.header.frame_id;
+
+    dynamic_obstacle_pub.publish(dynamic_obstacle_filter_);
   }
   
 private:
