@@ -152,8 +152,8 @@ public:
     ROS_INFO("%d", (int)dynamic_obstacle_.points.size());///
     pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;
     sor.setInputCloud (pcl_dynamic_obstacle);
-    sor.setMeanK ((int)dynamic_obstacle_.points.size());
-    sor.setStddevMulThresh (3.0);
+    sor.setMeanK (2);
+    sor.setStddevMulThresh (1.5);
     pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_dynamic_obstacle_filter(new pcl::PointCloud<pcl::PointXYZ>);
     sor.filter(*pcl_dynamic_obstacle_filter);
 
