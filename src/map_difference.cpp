@@ -12,7 +12,7 @@
 #include <pcl_conversions/pcl_conversions.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <sensor_msgs/point_cloud_conversion.h>
-#define allowable_error 0.5
+#define allowable_error 0.2
 #define static_error 0.01
 
 class Map_Difference{
@@ -50,6 +50,7 @@ public:
       }
     }
     static_obstacle_.header.frame_id = map->header.frame_id;
+    static_obstacle_.header.stamp = ros::Time::now();
 
     static_obstacle_pub.publish(static_obstacle_);
   }
@@ -84,6 +85,7 @@ public:
         scan_cloud.points[i].y = scan_cloud_y[i];
         scan_cloud.channels[0].values[i] = scan_cloud_intensity[i];
       }
+
       //error処理
       if(!listener.waitForTransform(scan->header.frame_id, static_obstacle_.header.frame_id, scan->header.stamp + ros::Duration().fromSec(scan->ranges.size() * scan->time_increment), ros::Duration(1.0))){
         return;
@@ -153,7 +155,7 @@ public:
     pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;
     sor.setInputCloud (pcl_dynamic_obstacle);
     sor.setMeanK (2);
-    sor.setStddevMulThresh (1.5);
+    sor.setStddevMulThresh (0.8);
     pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_dynamic_obstacle_filter(new pcl::PointCloud<pcl::PointXYZ>);
     sor.filter(*pcl_dynamic_obstacle_filter);
 
