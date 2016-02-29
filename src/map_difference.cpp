@@ -12,8 +12,7 @@
 #include <pcl_conversions/pcl_conversions.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <sensor_msgs/point_cloud_conversion.h>
-#define allowable_error 0.2
-#define static_error 0.01
+#define allowable_error 0.5 //差分の許容範囲
 
 class Map_Difference{
 public:
@@ -26,6 +25,7 @@ public:
   }
 
   void mapCallBack(const nav_msgs::OccupancyGrid::ConstPtr& map){
+    //マップをPointCloudに変換
     float x = map->info.origin.position.x + map->info.resolution / 2;
     float y = map->info.origin.position.y + map->info.resolution / 2;
     int i , j = 0, static_obstacle_num = 0;
@@ -59,10 +59,10 @@ public:
     float distance;
     int i, j, count, k, dynamic_obstacle_num;
 
-   if(check == false){
-      ROS_WARN("map is not call");
+    if(check == false){
+      ROS_WARN("Map has not been called");
     }else{
-      //差分の処理を入れる
+      //スキャンをPointCloudに変換
       dynamic_obstacle_num = 0;
       dynamic_obstacle_.points.clear();
 
@@ -71,7 +71,7 @@ public:
       float scan_cloud_x[(int)scan_cloud.points.size()], scan_cloud_y[(int)scan_cloud.points.size()], scan_cloud_intensity[(int)scan_cloud.channels[0].values.size()];
       count = 0;
       for(i = 0; i < (int)scan_cloud.points.size(); i++){
-        if((float)hypotf(scan_cloud.points[i].x, scan_cloud.points[i].y) < 29){
+        if((float)hypotf(scan_cloud.points[i].x, scan_cloud.points[i].y) < 30){
           scan_cloud_x[count] = scan_cloud.points[i].x;
           scan_cloud_y[count] = scan_cloud.points[i].y;
           scan_cloud_intensity[count] = scan_cloud.channels[0].values[i];
@@ -86,13 +86,13 @@ public:
         scan_cloud.channels[0].values[i] = scan_cloud_intensity[i];
       }
 
-      //error処理
       if(!listener.waitForTransform(scan->header.frame_id, static_obstacle_.header.frame_id, scan->header.stamp + ros::Duration().fromSec(scan->ranges.size() * scan->time_increment), ros::Duration(1.0))){
         return;
       }
 
       listener.transformPointCloud(static_obstacle_.header.frame_id, scan_cloud, scan_cloud);
 
+      //スキャンとマップの差分をとる
       for(i = 0; i < (int)scan_cloud.points.size(); i++){
         int dynamic_obstacle_check = true;
         float x_min = scan_cloud.points[i].x - allowable_error;
@@ -152,9 +152,10 @@ public:
     pcl::fromROSMsg(dynamic_obstacle2_, *pcl_dynamic_obstacle);
 
     ROS_INFO("%d", (int)dynamic_obstacle_.points.size());///
+    //外れ値処理
     pcl::StatisticalOutlierRemoval<pcl::PointXYZ> sor;
     sor.setInputCloud (pcl_dynamic_obstacle);
-    sor.setMeanK (2);
+    sor.setMeanK (5);
     sor.setStddevMulThresh (0.8);
     pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_dynamic_obstacle_filter(new pcl::PointCloud<pcl::PointXYZ>);
     sor.filter(*pcl_dynamic_obstacle_filter);
